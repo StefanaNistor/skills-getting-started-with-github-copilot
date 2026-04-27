@@ -3,6 +3,37 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const activityCardTemplate = document.getElementById("activity-card-template");
+
+  async function removeParticipant(activityName, email) {
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activityName)}/participants?email=${encodeURIComponent(email)}`,
+        { method: "DELETE" }
+      );
+
+      const result = await response.json();
+      if (response.ok) {
+        messageDiv.textContent = result.message;
+        messageDiv.className = "success";
+        messageDiv.classList.remove("hidden");
+        fetchActivities();
+      } else {
+        messageDiv.textContent = result.detail || "Unable to remove participant";
+        messageDiv.className = "error";
+        messageDiv.classList.remove("hidden");
+      }
+
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+    } catch (error) {
+      messageDiv.textContent = "Failed to remove participant. Please try again.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error removing participant:", error);
+    }
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -10,24 +41,47 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear loading message and reset activity options
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
-        const activityCard = document.createElement("div");
-        activityCard.className = "activity-card";
+        const cardClone = activityCardTemplate.content.cloneNode(true);
+        cardClone.querySelector(".activity-name").textContent = name;
+        cardClone.querySelector(".activity-description").textContent = details.description;
+        cardClone.querySelector(".activity-schedule span").textContent = details.schedule;
+        cardClone.querySelector(".activity-availability span").textContent = details.max_participants - details.participants.length;
 
-        const spotsLeft = details.max_participants - details.participants.length;
+        const participantsList = cardClone.querySelector(".participants-list");
+        if (details.participants.length > 0) {
+          details.participants.forEach((email) => {
+            const listItem = document.createElement("li");
+            listItem.className = "participant-item";
 
-        activityCard.innerHTML = `
-          <h4>${name}</h4>
-          <p>${details.description}</p>
-          <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
-        `;
+            const emailSpan = document.createElement("span");
+            emailSpan.textContent = email;
+            emailSpan.className = "participant-email";
 
-        activitiesList.appendChild(activityCard);
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "remove-participant";
+            removeButton.setAttribute("aria-label", `Remove ${email}`);
+            removeButton.textContent = "×";
+            removeButton.addEventListener("click", () => removeParticipant(name, email));
+
+            listItem.appendChild(emailSpan);
+            listItem.appendChild(removeButton);
+            participantsList.appendChild(listItem);
+          });
+        } else {
+          const listItem = document.createElement("li");
+          listItem.className = "no-participants";
+          listItem.innerHTML = "<em>No one signed up yet</em>";
+          participantsList.appendChild(listItem);
+        }
+
+        activitiesList.appendChild(cardClone);
 
         // Add option to select dropdown
         const option = document.createElement("option");
@@ -62,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
